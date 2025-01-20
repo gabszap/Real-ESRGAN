@@ -1,6 +1,5 @@
 import argparse
 import cv2
-import glob
 import os
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from basicsr.utils.download_util import load_file_from_url
@@ -98,43 +97,38 @@ def main():
             channel_multiplier=2,
             bg_upsampler=upsampler)
     
-    # Itera sobre as subpastas na pasta de entrada
-    for subdir in os.listdir(args.input):
-        subdir_path = os.path.join(args.input, subdir)
-        if os.path.isdir(subdir_path):
-            # Cria uma pasta de saída para a subpasta atual
-            output_subdir_path = os.path.join(args.output, subdir)
-            os.makedirs(output_subdir_path, exist_ok=True)
+    # Itera sobre todas as subpastas na pasta de entrada
+    for root, dirs, files in os.walk(args.input):
+        for filename in files:
+            imgname, ext = os.path.splitext(filename)
+            if ext.lower() in ['.jpg', '.png', '.jpeg']:
+                path = os.path.join(root, filename)
+                img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+                
+                # Define o modo da imagem
+                if len(img.shape) == 3 and img.shape[2] == 4:
+                    img_mode = 'RGBA'
+                else:
+                    img_mode = None
 
-            # Itera sobre as imagens na subpasta atual
-            for filename in os.listdir(subdir_path):
-                imgname, ext = os.path.splitext(filename)
-                if ext.lower() in ['.jpg', '.png', '.jpeg']:
-                    path = os.path.join(subdir_path, filename)
-                    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-                    
-                    # Define o modo da imagem
-                    if len(img.shape) == 3 and img.shape[2] == 4:
-                        img_mode = 'RGBA'
+                try:
+                    if args.face_enhance:
+                        _, _, output = face_enhancer.enhance(img, has_aligned=False, only_center_face=False, paste_back=True)
                     else:
-                        img_mode = None
-
-                    try:
-                        if args.face_enhance:
-                            _, _, output = face_enhancer.enhance(img, has_aligned=False, only_center_face=False, paste_back=True)
-                        else:
-                            output, _ = upsampler.enhance(img, outscale=args.outscale)
-                    except RuntimeError as error:
-                        print('Error:', error)
-                        print('If you encounter CUDA out of memory, try to set --tile with a smaller number.')
-                        continue
-                    else:
-                        # Define a extensão e o caminho para salvar a imagem processada
-                        extension = ext[1:] if args.ext == 'auto' else args.ext
-                        if img_mode == 'RGBA':
-                            extension = 'png'
-                        save_path = os.path.join(output_subdir_path, f'{imgname}_{args.suffix}.{extension}')
-                        cv2.imwrite(save_path, output)
+                        output, _ = upsampler.enhance(img, outscale=args.outscale)
+                except RuntimeError as error:
+                    print('Error:', error)
+                    print('If you encounter CUDA out of memory, try to set --tile with a smaller number.')
+                    continue
+                else:
+                    # Define a extensão e o caminho para salvar a imagem processada
+                    extension = 'jpg'  # Força a extensão para JPG
+                    # Cria a estrutura de diretórios de saída preservando a estrutura de entrada
+                    relative_path = os.path.relpath(root, args.input)
+                    output_subdir_path = os.path.join(args.output, relative_path)
+                    os.makedirs(output_subdir_path, exist_ok=True)
+                    save_path = os.path.join(output_subdir_path, f'{imgname}_{args.suffix}.{extension}')
+                    cv2.imwrite(save_path, output)
 
 if __name__ == '__main__':
     main()
